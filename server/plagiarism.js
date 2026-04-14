@@ -18,17 +18,25 @@ export function calculateSimilarity(text1, text2) {
 
 export async function searchWeb(query) {
   const urls = [];
+  const isVercelRuntime = process.env.VERCEL === "1";
+  const searchTimeoutMs = isVercelRuntime ? 3500 : 8000;
 
   try {
     const searchQuery = encodeURIComponent(query.slice(0, 200));
     const ddgUrl = `https://html.duckduckgo.com/html/?q=${searchQuery}`;
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), searchTimeoutMs);
 
     const response = await fetch(ddgUrl, {
       headers: {
         "User-Agent":
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
       },
+      signal: controller.signal,
     });
+
+    clearTimeout(timeoutId);
 
     const html = await response.text();
 
@@ -56,7 +64,11 @@ export async function searchWeb(query) {
     const searchQuery = encodeURIComponent(query.slice(0, 150));
     const crossrefUrl = `https://api.crossref.org/works?query=${searchQuery}&rows=5`;
 
-    const response = await fetch(crossrefUrl);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), searchTimeoutMs);
+
+    const response = await fetch(crossrefUrl, { signal: controller.signal });
+    clearTimeout(timeoutId);
     const data = await response.json();
 
     if (data.message?.items) {
@@ -75,8 +87,11 @@ export async function searchWeb(query) {
 
 export async function fetchPageContent(url) {
   try {
+    const isVercelRuntime = process.env.VERCEL === "1";
+    const pageTimeoutMs = isVercelRuntime ? 3500 : 8000;
+
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 8000);
+    const timeoutId = setTimeout(() => controller.abort(), pageTimeoutMs);
 
     const response = await fetch(url, {
       headers: {

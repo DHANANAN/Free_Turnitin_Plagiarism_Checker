@@ -8,6 +8,8 @@ import {
 } from "./plagiarism.js";
 
 export function registerRoutes(app) {
+  const isVercelRuntime = process.env.VERCEL === "1";
+
   app.post("/api/plagiarism-check", async (req, res) => {
     try {
       const { text } = checkTextSchema.parse(req.body);
@@ -22,19 +24,22 @@ export function registerRoutes(app) {
       console.log("Split into", sentences.length, "sentences");
 
       const results = [];
-      const limit = Math.min(sentences.length, 20);
+      const maxSentences = isVercelRuntime ? 6 : 20;
+      const maxUrlsPerSentence = isVercelRuntime ? 3 : 10;
+      const limit = Math.min(sentences.length, maxSentences);
 
       for (let i = 0; i < limit; i++) {
         const sentence = sentences[i];
         console.log("Checking chunk:", sentence.substring(0, 50) + "...");
 
         const urls = await searchWeb(sentence);
-        console.log(`Found ${urls.length} URLs to check`);
+        const candidateUrls = urls.slice(0, maxUrlsPerSentence);
+        console.log(`Found ${urls.length} URLs, checking ${candidateUrls.length}`);
 
         let maxSimilarity = 0;
         const matchedSources = [];
 
-        for (const url of urls) {
+        for (const url of candidateUrls) {
           const content = await fetchPageContent(url);
           if (content && content.length > 100) {
             const cosineSim = calculateSimilarity(sentence, content);
@@ -70,7 +75,10 @@ export function registerRoutes(app) {
           isPlagiarized: maxSimilarity > 0.5,
         });
 
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+        // Keep local rate-limiting behavior, but avoid serverless timeout pressure.
+        if (!isVercelRuntime) {
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        }
       }
 
       const totalSimilarity = results.reduce((sum, r) => sum + r.similarity, 0);
